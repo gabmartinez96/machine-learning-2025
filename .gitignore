@@ -2,4 +2,8 @@
 *.parquet
 *.csv
 mlartifacts
+<<<<<<< HEAD
 mlruns
+=======
+mlruns
+>>>>>>> ab721e7e653c9a3827c39d922ba8ace41a15d756
