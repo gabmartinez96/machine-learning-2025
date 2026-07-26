@@ -1,6 +1,7 @@
 *.xlsx
 *.parquet
 *.csv
+*.pkl
 mlartifacts
 <<<<<<< HEAD
 mlruns
