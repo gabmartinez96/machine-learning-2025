@@ -111,6 +111,11 @@ model_pipeline = pipeline.Pipeline(
 model_pipeline.fit(X_train, y_train)
 
 #%%
+import mlflow
+
+mlflow.set_tracking_uri("")
+
+mlflow.set_experiment(experiment_name="churn_exp")
 
 y_train_predict = model_pipeline.predict(X_train)
 y_train_proba = model_pipeline.predict_proba(X_train)[:,1]
