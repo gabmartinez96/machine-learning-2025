@@ -14,7 +14,6 @@ oot = df[df['dtRef'] == df['dtRef'].max()].copy()
 df_train = df[df['dtRef'] < df['dtRef'].max()].copy()
 
 #%%
-
 # Essas são as variaveis
 features = df_train.columns[2:-1]
 
@@ -61,12 +60,12 @@ sumario.sort_values(by=['diff_rel'], ascending=False)
 import matplotlib.pyplot as plt
 from feature_engine import discretisation, encoding # type: ignore
 from sklearn import pipeline, linear_model, metrics, naive_bayes, tree, ensemble
+import mlflow
+
 
 arvore = tree.DecisionTreeClassifier(random_state=42, max_depth=5)
 arvore.fit(X_train, y_train)
 
-# %%
-# MODIFY
 # Definindo as principais features
 feature_importance = (pd.Series(arvore.feature_importances_,
                                 index=X_train.columns)
@@ -75,6 +74,9 @@ feature_importance = (pd.Series(arvore.feature_importances_,
 feature_importance['acum'] = feature_importance[0].cumsum()
 best_features = (feature_importance[feature_importance['acum'] < 0.96]['index']
                  .tolist())
+
+# %%
+# MODIFY
 ## Discretizar
 # Regression = False se as variáveis forem para modelar uma classificação
 tree_discretization = discretisation.DecisionTreeDiscretiser(variables=best_features,
@@ -91,66 +93,82 @@ onehot = encoding.OneHotEncoder(variables=best_features, ignore_format=True)
 # Model
 # model = linear_model.LogisticRegression(penalty=None, random_state=42, max_iter=10000)
 # model = naive_bayes.BernoulliNB()
-model = ensemble.RandomForestClassifier(random_state=42,
+
+mlflow.set_tracking_uri('http://127.0.0.1:5000')
+
+mlflow.set_experiment(experiment_name='churn_exp')
+
+with mlflow.start_run(run_name=model.__str__()):
+    mlflow.sklearn.autolog()
+    model = ensemble.RandomForestClassifier(random_state=42,
                                         min_samples_leaf=20,
                                         n_jobs=-1,
-                                        n_estimators=1000
-                                
+                                        n_estimators=1000)
 
-)
+# model = ensemble.AdaBoostClassifier(random_state=42,
 
-# Model pipeline
-model_pipeline = pipeline.Pipeline(
-    steps = [
-        ("Discretizar", tree_discretization),
-        ("OneHot", onehot),
-        ("Model", model)
-    ]
-)
+#                                     n_estimators=500,
+#                                     learning_rate=.99)
 
-model_pipeline.fit(X_train, y_train)
+    params = {
+        'min_samples_leaf':[15,20,25,30,35,40],
+        'n_estimators':[100,200,500,1000],
+        'criterion':['gini', 'entropy', 'log_loss']
+    }
 
-#%%
-import mlflow
+    grid = model_selection.GridSearchCV(model, params, cv=3, scoring='roc_auc', verbose=4)
 
-mlflow.set_tracking_uri("")
+    # Model pipeline
+    model_pipeline = pipeline.Pipeline(
+        steps = [
+            ("Discretizar", tree_discretization),
+            ("OneHot", onehot),
+            ("Grid", grid)
+        ]
+    )
 
-mlflow.set_experiment(experiment_name="churn_exp")
+    model_pipeline.fit(X_train[best_features], y_train)
 
-y_train_predict = model_pipeline.predict(X_train)
-y_train_proba = model_pipeline.predict_proba(X_train)[:,1]
+    y_train_predict = grid.predict(X_train[best_features])
+    y_train_proba = grid.predict_proba(X_train[best_features])[:,1]
 
-# Calcular as métricas na base de dados de treino
-acc_train = metrics.accuracy_score(y_train, y_train_predict)
-auc_train = metrics.roc_auc_score(y_train, y_train_proba)
-roc_train = metrics.roc_curve(y_train,y_train_proba)
-print(f"Acurácia Treino: {acc_train}")
-print(f"AUC Treino: {auc_train}")
+    # Calcular as métricas na base de dados de treino
+    acc_train = metrics.accuracy_score(y_train, y_train_predict)
+    auc_train = metrics.roc_auc_score(y_train, y_train_proba)
+    roc_train = metrics.roc_curve(y_train,y_train_proba)
+    print(f"Acurácia Treino: {acc_train}")
+    print(f"AUC Treino: {auc_train}")
 
-# %%
-# Aplicar as métricas em cima da base de teste
-y_test_predict = model_pipeline.predict(X_test)
-y_test_proba = model_pipeline.predict_proba(X_test)[:,1]
+    # Aplicar as métricas em cima da base de teste
+    y_test_predict = grid.predict(X_test[best_features])
+    y_test_proba = grid.predict_proba(X_test[best_features])[:,1]
 
-# Calcular as métricas na base de dados de test
-acc_test = metrics.accuracy_score(y_test, y_test_predict)
-auc_test = metrics.roc_auc_score(y_test, y_test_proba)
-roc_test = metrics.roc_curve(y_test,y_test_proba)
-print(f"Acurácia teste: {acc_test}")
-print(f"AUC teste: {auc_test}")
+    # Calcular as métricas na base de dados de test
+    acc_test = metrics.accuracy_score(y_test, y_test_predict)
+    auc_test = metrics.roc_auc_score(y_test, y_test_proba)
+    roc_test = metrics.roc_curve(y_test,y_test_proba)
+    print(f"Acurácia teste: {acc_test}")
+    print(f"AUC teste: {auc_test}")
 
-# %%
+    # Fazer a mesma coisa na oot (Out of time)
+    oot_predict = grid.predict(oot[best_features])
+    oot_proba = grid.predict_proba(oot[best_features])[:,1]
 
-# Fazer a mesma coisa na oot (Out of time)
-oot_predict = model_pipeline.predict(oot[features])
-oot_proba = model_pipeline.predict_proba(oot[features])[:,1]
+    # Calcular as métricas na base de dados de test
+    acc_oot = metrics.accuracy_score(oot[target], oot_predict)
+    auc_oot = metrics.roc_auc_score(oot[target], oot_proba)
+    roc_oot = metrics.roc_curve(oot[target],oot_proba)
+    print(f"Acurácia oot: {acc_oot}")
+    print(f"AUC oot: {auc_oot}")
 
-# Calcular as métricas na base de dados de test
-acc_oot = metrics.accuracy_score(oot[target], oot_predict)
-auc_oot = metrics.roc_auc_score(oot[target], oot_proba)
-roc_oot = metrics.roc_curve(oot[target],oot_proba)
-print(f"Acurácia oot: {acc_oot}")
-print(f"AUC oot: {auc_oot}")
+    mlflow.log_metrics(
+    {"acc_train":acc_train,
+    "auc_train":auc_train,
+    "acc_test":acc_test,
+    "auc_test":auc_test,
+    "acc_oot":acc_oot,
+    "auc_oot":auc_oot,}
+    )
 # %%
 
 # Plotar curvas roc
@@ -160,4 +178,5 @@ plt.plot(roc_oot[0], roc_oot[1], label=f'Out-of-Time: {auc_oot*100:.2f}')
 plt.grid()
 plt.legend()
 plt.title('Curva ROC')
+plt.show()
 # %%
