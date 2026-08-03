@@ -98,7 +98,7 @@ mlflow.set_tracking_uri('http://127.0.0.1:5000')
 
 mlflow.set_experiment(experiment_name='churn_exp')
 
-with mlflow.start_run(run_name=model.__str__()):
+with mlflow.start_run():
     mlflow.sklearn.autolog()
     model = ensemble.RandomForestClassifier(random_state=42,
                                         min_samples_leaf=20,
@@ -129,8 +129,8 @@ with mlflow.start_run(run_name=model.__str__()):
 
     model_pipeline.fit(X_train[best_features], y_train)
 
-    y_train_predict = grid.predict(X_train[best_features])
-    y_train_proba = grid.predict_proba(X_train[best_features])[:,1]
+    y_train_predict = model_pipeline.predict(X_train[best_features])
+    y_train_proba = model_pipeline.predict_proba(X_train[best_features])[:,1]
 
     # Calcular as métricas na base de dados de treino
     acc_train = metrics.accuracy_score(y_train, y_train_predict)
@@ -140,8 +140,8 @@ with mlflow.start_run(run_name=model.__str__()):
     print(f"AUC Treino: {auc_train}")
 
     # Aplicar as métricas em cima da base de teste
-    y_test_predict = grid.predict(X_test[best_features])
-    y_test_proba = grid.predict_proba(X_test[best_features])[:,1]
+    y_test_predict = model_pipeline.predict(X_test[best_features])
+    y_test_proba = model_pipeline.predict_proba(X_test[best_features])[:,1]
 
     # Calcular as métricas na base de dados de test
     acc_test = metrics.accuracy_score(y_test, y_test_predict)
@@ -151,8 +151,8 @@ with mlflow.start_run(run_name=model.__str__()):
     print(f"AUC teste: {auc_test}")
 
     # Fazer a mesma coisa na oot (Out of time)
-    oot_predict = grid.predict(oot[best_features])
-    oot_proba = grid.predict_proba(oot[best_features])[:,1]
+    oot_predict = model_pipeline.predict(oot[best_features])
+    oot_proba = model_pipeline.predict_proba(oot[best_features])[:,1]
 
     # Calcular as métricas na base de dados de test
     acc_oot = metrics.accuracy_score(oot[target], oot_predict)
@@ -179,4 +179,15 @@ plt.grid()
 plt.legend()
 plt.title('Curva ROC')
 plt.show()
+# %%
+
+# Salvar o estado do modelo
+model_df = pd.Series(
+    {
+    "model":model_pipeline,
+    "features":best_features
+    }
+)
+
+model_df.to_pickle("model.pkl")
 # %%
