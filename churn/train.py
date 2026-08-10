@@ -91,8 +91,6 @@ onehot = encoding.OneHotEncoder(variables=best_features, ignore_format=True)
 # %%
 
 # Model
-# model = linear_model.LogisticRegression(penalty=None, random_state=42, max_iter=10000)
-# model = naive_bayes.BernoulliNB()
 
 mlflow.set_tracking_uri('http://127.0.0.1:5000')
 
